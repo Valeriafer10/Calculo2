@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sumas de Riemann: mi paisaje medido</title>
+<style>
+:root{--bg:#fff;--fg:#1d2330;--mut:#5b6475;--card:#f3f5f9;--bd:#cfd5e0;--reg:#cfe3f7;--rect:#f08a24;--rects:#9a4b00;--line:#0b4f9c;--acc:#0b4f9c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14181f;--fg:#e8ebf2;--mut:#9aa4b6;--card:#1e2430;--bd:#3a4354;--reg:#27425f;--rect:#e8892b;--rects:#ffd9a8;--line:#7db6ff;--acc:#7db6ff}}
+:root[data-theme="dark"]{--bg:#14181f;--fg:#e8ebf2;--mut:#9aa4b6;--card:#1e2430;--bd:#3a4354;--reg:#27425f;--rect:#e8892b;--rects:#ffd9a8;--line:#7db6ff;--acc:#7db6ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:12px;max-width:1000px;margin-inline:auto}
+h1{font-size:1.25rem;margin:.2rem 0}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin:10px 0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:5px 9px}
+button{cursor:pointer}button.on{background:var(--acc);color:var(--bg);border-color:var(--acc)}
+input[type=range]{flex:1;min-width:180px;padding:0}
+input[type=number]{width:90px}
+svg{width:100%;height:auto;display:block;background:var(--bg);border:1px solid var(--bd);border-radius:10px}
+.sc{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{border:1px solid var(--bd);padding:4px 8px;text-align:right}th{background:var(--card)}
+td:first-child,th:first-child{text-align:left}
+.big{font-size:1.05rem}.mut{color:var(--mut);font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.kv b{display:block;font-size:1.15rem}
+.scroll{max-height:220px;overflow:auto}
+</style></head><body>
+<h1>Suma de áreas de rectángulos bajo mi borde medido</h1>
+<div class="mut">Datos propios en u (unidad de mi regla de papel). Base de 0 a 12 u. Borde: segmentos rectos entre los 7 puntos medidos.</div>
+
+<div class="card">
+ <div class="row"><label for="rng"><b>Rectángulos n</b></label>
+  <input type="range" id="rng" min="1" max="600" value="6">
+  <input type="number" id="num" min="1" max="600" value="6" aria-label="Número de rectángulos"></div>
+ <div class="row" style="margin-top:8px" id="btns"></div>
+ <div class="row" style="margin-top:8px">
+  <b>Alturas por la:</b>
+  <button id="mL" class="on">Izquierda</button><button id="mR">Derecha</button>
+  <label style="margin-left:12px">Máximo <input type="number" id="maxN" min="2" max="5000" value="600"></label>
+  <span class="mut">(máximo inicial 600)</span>
+ </div>
+</div>
+
+<div class="sc"><svg id="svg" viewBox="0 0 900 520" role="img" aria-label="Gráfica de rectángulos bajo el borde medido"></svg></div>
+<div class="mut">Pasa el cursor o toca la gráfica para consultar un rectángulo.</div>
+
+<div class="card grid">
+ <div class="kv">Cantidad<b id="o_n"></b></div>
+ <div class="kv">Ancho 12/n<b id="o_w"></b></div>
+ <div class="kv">Método<b id="o_m"></b></div>
+ <div class="kv">Suma de áreas<b id="o_s"></b></div>
+</div>
+
+<div class="card">
+ <b>Consultar un rectángulo</b>
+ <div class="row" style="margin-top:6px"><label>Número k (1 a n) <input type="number" id="qk" min="1" value="1"></label></div>
+ <div id="qout" class="big" style="margin-top:6px"></div>
+ <div id="listwrap" style="margin-top:8px"></div>
+</div>
+
+<div class="card sc">
+ <b>Sumas izquierda y derecha</b>
+ <table id="tbl"></table>
+</div>
+
+<div class="card">
+ <b>Aproximación de referencia de la integral</b>
+ <div id="ref" class="big" style="margin-top:6px"></div>
+ <div class="mut" id="refnote"></div>
+</div>
+
+<script>
+const PX=[0,2,4,6,8,10,12], PY=[1.5,4.5,2,5.5,3.5,5,1], L=12;
+const fmt=(v,d=4)=>v.toFixed(d).replace('.',',');
+function H(x){ // altura sobre el borde de segmentos rectos
+  for(let i=0;i<PX.length;i++) if(Math.abs(x-PX[i])<1e-9) return PY[i];
+  for(let i=0;i<PX.length-1;i++) if(x>PX[i]&&x<PX[i+1]){const t=(x-PX[i])/(PX[i+1]-PX[i]);return PY[i]+t*(PY[i+1]-PY[i]);}
+  return NaN;}
+const isMeas=x=>PX.some(p=>Math.abs(p-x)<1e-9);
+function sum(n,mode){const w=L/n;let s=0;for(let k=0;k<n;k++){s+=H(mode==='L'?k*w:(k+1)*w)*w;}return s;}
+function mid(n){const w=L/n;let s=0;for(let k=0;k<n;k++)s+=H((k+0.5)*w)*w;return s;}
+const $=id=>document.getElementById(id);
+let n=6,mode='L',maxN=600,sel=1;
+const W0=70,PW=800,B=440,PH=380,YM=7;
+const sx=x=>W0+x*PW/L, sy=y=>B-y*PH/YM;
+function setN(v){n=Math.max(1,Math.min(maxN,Math.round(+v)||1));$('rng').value=n;$('num').value=n;if(sel>n)sel=n;draw();}
+function setMax(v){maxN=Math.max(2,Math.min(5000,Math.round(+v)||600));$('maxN').value=maxN;$('rng').max=maxN;$('num').max=maxN;if(n>maxN)n=maxN;$('rng').value=n;$('num').value=n;btns();tbl();ref();draw();}
+function btns(){const b=$('btns');b.innerHTML='<span class="mut">Atajos:</span>';
+ [3,6,12,24,60].forEach(v=>{const e=document.createElement('button');e.textContent=v;e.onclick=()=>setN(v);b.appendChild(e);});
+ const e=document.createElement('button');e.textContent='Máximo';e.onclick=()=>setN(maxN);b.appendChild(e);}
+function tbl(){const ns=[3,6,12,24,60,maxN];let h='<tr><th>n</th><th>Ancho (u)</th><th>Suma izquierda (u²)</th><th>Suma derecha (u²)</th><th>Diferencia absoluta (u²)</th></tr>';
+ ns.forEach((m,i)=>{const a=sum(m,'L'),b=sum(m,'R');h+=`<tr><td>${m}${i==5?' (máximo)':''}</td><td>${fmt(L/m,5)}</td><td>${fmt(a)}</td><td>${fmt(b)}</td><td>${fmt(Math.abs(a-b))}</td></tr>`;});
+ $('tbl').innerHTML=h;}
+function ref(){const v=mid(maxN);
+ $('ref').innerHTML=`≈ ${fmt(v,4)} u²`;
+ $('refnote').textContent=`Método: regla del punto medio, con ${maxN} rectángulos y la altura en el centro de cada intervalo sobre el borde de segmentos rectos. Es una aproximación numérica de referencia para este borde, no un valor exacto ni el área exacta del paisaje físico.`;}
+function rectInfo(k){const w=L/n,x0=(k-1)*w,x1=k*w,xa=mode==='L'?x0:x1,h=H(xa);
+ return {x0,x1,xa,h,w,area:h*w,meas:isMeas(xa)};}
+function query(){const r=rectInfo(sel);
+ $('qk').max=n;$('qk').value=sel;
+ $('qout').innerHTML=`Rectángulo ${sel} de ${n}: de x = ${fmt(r.x0)} a ${fmt(r.x1)} u. Altura en x = ${fmt(r.xa)} u (${mode==='L'?'izquierda':'derecha'}, ${r.meas?'punto medido':'interpolada entre vecinos'}): <b>${fmt(r.h)} u</b>. Ancho ${fmt(r.w,5)} u. Producto altura × ancho = <b>${fmt(r.area,5)} u²</b>.`;
+ const lw=$('listwrap');
+ if(n<=60){let h='<div class="scroll"><table><tr><th>k</th><th>x usado (u)</th><th>Altura (u)</th><th>Altura × ancho (u²)</th></tr>';
+  for(let k=1;k<=n;k++){const q=rectInfo(k);h+=`<tr${k==sel?' style="outline:2px solid var(--acc)"':''}><td>${k}</td><td>${fmt(q.xa)}</td><td>${fmt(q.h)}</td><td>${fmt(q.area,5)}</td></tr>`;}
+  lw.innerHTML=h+'</table></div>';}
+ else lw.innerHTML='<span class="mut">Con n &gt; 60 no se lista cada rectángulo para no saturar la pantalla; usa el campo k o toca la gráfica.</span>';}
+function draw(){
+ const w=L/n,s=sum(n,mode),T=(x,y,t,a='middle',c='var(--fg)',sz=13,wt='')=>`<text x="${x}" y="${y}" text-anchor="${a}" fill="${c}" font-size="${sz}" ${wt?'font-weight="'+wt+'"':''}>${t}</text>`;
+ let g='';
+ // región bajo el borde
+ g+=`<polygon points="${sx(0)},${sy(0)} ${PX.map((x,i)=>sx(x)+','+sy(PY[i])).join(' ')} ${sx(L)},${sy(0)}" fill="var(--reg)"/>`;
+ // cuadrícula y ejes
+ for(let x=0;x<=L;x++){g+=`<line x1="${sx(x)}" y1="${sy(0)}" x2="${sx(x)}" y2="${sy(YM)}" stroke="var(--bd)" stroke-width=".5"/>`+T(sx(x),B+18,String(x));}
+ for(let y=0;y<=YM;y++){g+=`<line x1="${sx(0)}" y1="${sy(y)}" x2="${sx(L)}" y2="${sy(y)}" stroke="var(--bd)" stroke-width=".5"/>`+T(W0-8,sy(y)+4,String(y),'end');}
+ // rectángulos
+ const sw=n<=60?1.2:(n<=150?.5:0);
+ let r='';
+ for(let k=1;k<=n;k++){const q=rectInfo(k);if(k==sel)continue;
+  r+=`<rect x="${sx(q.x0)}" y="${sy(q.h)}" width="${Math.max(PW*w/L,.3)}" height="${q.h*PH/YM}" fill="var(--rect)" fill-opacity=".62" ${sw?`stroke="var(--rects)" stroke-width="${sw}"`:''}/>`;}
+ g+=r;
+ {const q=rectInfo(sel);g+=`<rect x="${sx(q.x0)}" y="${sy(q.h)}" width="${Math.max(PW*w/L,1.5)}" height="${q.h*PH/YM}" fill="var(--rect)" stroke="var(--fg)" stroke-width="2.2"/>`;}
+ // etiquetas de altura solo si n ≤ 12
+ if(n<=12)for(let k=1;k<=n;k++){const q=rectInfo(k);g+=T(sx(q.x0+w/2),sy(q.h)+16,fmt(q.h,2),'middle','var(--fg)',11,'600');}
+ // borde
+ g+=`<polyline fill="none" stroke="var(--line)" stroke-width="3" stroke-linejoin="round" points="${PX.map((x,i)=>sx(x)+','+sy(PY[i])).join(' ')}"/>`;
+ // base
+ g+=`<line x1="${sx(0)}" y1="${sy(0)}" x2="${sx(L)}" y2="${sy(0)}" stroke="var(--fg)" stroke-width="2.5"/>`;
+ g+=`<line x1="${sx(0)}" y1="${sy(0)}" x2="${sx(0)}" y2="${sy(YM)}" stroke="var(--fg)" stroke-width="1.5"/>`;
+ // puntos medidos
+ PX.forEach((x,i)=>{g+=`<circle cx="${sx(x)}" cy="${sy(PY[i])}" r="5.5" fill="var(--bg)" stroke="var(--line)" stroke-width="2.5"/>`+T(sx(x),sy(PY[i])-11,`(${x}; ${fmt(PY[i],1)})`,'middle','var(--line)',11,'700');});
+ // títulos de ejes
+ g+=T(sx(6),B+42,'Posición x (u)','middle','var(--fg)',14,'600');
+ g+=`<text transform="translate(18 ${sy(3.5)}) rotate(-90)" text-anchor="middle" fill="var(--fg)" font-size="14" font-weight="600">Altura (u)</text>`;
+ g+=T(sx(9.3),sy(0.45),'Región bajo el borde','middle','var(--fg)',11);
+ // panel de resultados
+ g+=`<rect x="70" y="8" width="800" height="62" rx="8" fill="var(--card)" stroke="var(--bd)"/>`
+  +T(80,29,`Método: alturas por la ${mode==='L'?'IZQUIERDA':'DERECHA'}   |   n = ${n}   |   ancho = 12/n = ${fmt(w,5)} u`,'start','var(--fg)',14,'600')
+  +T(80,56,`Área estimada = ${fmt(s,4)} u²`,'start','var(--acc)',20,'700')
+  +T(860,56,'Unidades: longitud en u, área en u²','end','var(--mut)',11);
+ $('svg').innerHTML=g;
+ $('o_n').textContent=n;$('o_w').textContent=fmt(w,5)+' u';$('o_m').textContent=mode==='L'?'Izquierda':'Derecha';$('o_s').textContent=fmt(s,4)+' u²';
+ $('mL').classList.toggle('on',mode==='L');$('mR').classList.toggle('on',mode==='R');
+ query();}
+function pick(e){const b=$('svg').getBoundingClientRect(),px=(e.clientX-b.left)*900/b.width,x=(px-W0)*L/PW;
+ if(x<0||x>=L)return;const k=Math.floor(x/(L/n))+1;if(k!==sel){sel=Math.max(1,Math.min(n,k));draw();}}
+$('svg').addEventListener('mousemove',pick);$('svg').addEventListener('click',pick);$('svg').addEventListener('touchstart',e=>pick(e.touches[0]),{passive:true});
+$('rng').oninput=e=>setN(e.target.value);
+$('num').onchange=e=>setN(e.target.value);
+$('maxN').onchange=e=>setMax(e.target.value);
+$('mL').onclick=()=>{mode='L';draw();};$('mR').onclick=()=>{mode='R';draw();};
+$('qk').onchange=e=>{sel=Math.max(1,Math.min(n,Math.round(+e.target.value)||1));draw();};
+btns();tbl();ref();draw();
+</script></body></html>
